@@ -1,33 +1,39 @@
+let deferredInstallPrompt = null;
+
+window.addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault();
+  deferredInstallPrompt = e;
+});
+
 document.addEventListener('DOMContentLoaded', () => {
   // Register Service Worker for PWA ("Tích Điểm")
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('/sw.js').catch(() => {});
   }
 
-  // PWA Add to Home Screen Logic
-  let deferredInstallPrompt = null;
+  // PWA Add to Home Screen Logic (1-Click Native Prompt, No Guide Modal)
   const btnAddToHomeScreen = document.getElementById('btnAddToHomeScreen');
-  const a2hsModalBackdrop = document.getElementById('a2hsModalBackdrop');
-  const btnCloseA2hsModal = document.getElementById('btnCloseA2hsModal');
 
-  window.addEventListener('beforeinstallprompt', (e) => {
-    e.preventDefault();
-    deferredInstallPrompt = e;
-  });
+  const isStandaloneMode = () =>
+    window.matchMedia('(display-mode: standalone)').matches ||
+    window.navigator.standalone === true;
+
+  if (btnAddToHomeScreen && isStandaloneMode()) {
+    btnAddToHomeScreen.style.display = 'none';
+  }
 
   window.addEventListener('appinstalled', () => {
     deferredInstallPrompt = null;
+    if (btnAddToHomeScreen) {
+      btnAddToHomeScreen.style.display = 'none';
+    }
     showToast('Đã thêm "Tích Điểm" ra màn hình chính thành công!');
   });
 
   if (btnAddToHomeScreen) {
     btnAddToHomeScreen.addEventListener('click', async () => {
-      const isStandalone =
-        window.matchMedia('(display-mode: standalone)').matches ||
-        window.navigator.standalone === true;
-
-      if (isStandalone) {
-        showToast('App "Tích Điểm" đã ở ngoài màn hình chính!');
+      if (isStandaloneMode()) {
+        btnAddToHomeScreen.style.display = 'none';
         return;
       }
 
@@ -35,22 +41,21 @@ document.addEventListener('DOMContentLoaded', () => {
         deferredInstallPrompt.prompt();
         const choice = await deferredInstallPrompt.userChoice;
         if (choice.outcome === 'accepted') {
-          showToast('Đang thêm "Tích Điểm" vào màn hình chính...');
+          showToast('Đang thêm "Tích Điểm" ra màn hình chính...');
         }
         deferredInstallPrompt = null;
-      } else if (a2hsModalBackdrop) {
-        a2hsModalBackdrop.classList.add('open');
+        return;
       }
-    });
-  }
 
-  if (btnCloseA2hsModal && a2hsModalBackdrop) {
-    btnCloseA2hsModal.addEventListener('click', () => {
-      a2hsModalBackdrop.classList.remove('open');
-    });
-    a2hsModalBackdrop.addEventListener('click', (e) => {
-      if (e.target === a2hsModalBackdrop) {
-        a2hsModalBackdrop.classList.remove('open');
+      if (navigator.share) {
+        try {
+          await navigator.share({
+            title: 'Tích Điểm',
+            url: window.location.origin
+          });
+        } catch (err) {
+          // User closed native system sheet
+        }
       }
     });
   }

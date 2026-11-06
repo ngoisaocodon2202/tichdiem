@@ -6,3 +6,4 @@ pgsql_server.log
 .vercel/
 *.tmp
 *.bak
+
