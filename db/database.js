@@ -41,6 +41,14 @@ const reportJsonPath = path.join(__dirname, '..', 'data', 'cleaning_report.json'
 let localCustomers = [];
 let localDailyLogs = [];
 
+// Cloud Persistence Bins (Primary + Backup) to preserve data permanently across Vercel deployments & devices
+const CLOUD_STORAGE_BINS = [
+  'https://extendsclass.com/api/json-storage/bin/cdfdeae',
+  'https://extendsclass.com/api/json-storage/bin/cfadfec'
+];
+const cloudOverridesMap = new Map();
+let lastCloudPullTime = 0;
+
 function getVietnamDateKey(dateObj = new Date()) {
   const parts = new Intl.DateTimeFormat('en-CA', {
     timeZone: 'Asia/Ho_Chi_Minh',
@@ -275,6 +283,195 @@ function ensureLocalPostgresEngineStarted() {
   }
 }
 
+async function pullStateFromCloudIfNeeded(force = false) {
+  const now = Date.now();
+  if (!force && now - lastCloudPullTime < 1500) {
+    return;
+  }
+  lastCloudPullTime = now;
+
+  for (const binUrl of CLOUD_STORAGE_BINS) {
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 3500);
+      const res = await fetch(binUrl, {
+        method: 'GET',
+        headers: { Accept: 'application/json', 'Cache-Control': 'no-cache' },
+        signal: controller.signal
+      });
+      clearTimeout(timeoutId);
+      if (!res.ok) continue;
+
+      const data = await res.json();
+      if (!data || typeof data !== 'object') continue;
+
+      let changedCustomers = false;
+      let changedLogs = false;
+
+      if (Array.isArray(data.overrides)) {
+        for (const item of data.overrides) {
+          if (!item || !validatePhone(item.phone)) continue;
+          const cleanPhone = String(item.phone).trim();
+          const cleanName = sanitizeName(item.full_name);
+          const parsedPoints = parseInt(item.points, 10);
+          if (!cleanName || !validatePoints(parsedPoints)) continue;
+          const updatedIso = item.updated_at || new Date().toISOString();
+
+          cloudOverridesMap.set(cleanPhone, {
+            phone: cleanPhone,
+            full_name: cleanName,
+            points: parsedPoints,
+            updated_at: updatedIso
+          });
+
+          const idx = localCustomers.findIndex((c) => c.phone === cleanPhone);
+          if (idx === -1) {
+            const nextId =
+              localCustomers.reduce((maxId, c) => Math.max(maxId, c.id || 0), 0) + 1;
+            localCustomers.unshift({
+              id: nextId,
+              phone: cleanPhone,
+              full_name: cleanName,
+              points: parsedPoints,
+              updated_at: updatedIso
+            });
+            changedCustomers = true;
+          } else {
+            const existing = localCustomers[idx];
+            const existingTime = new Date(existing.updated_at || 0).getTime() || 0;
+            const incomingTime = new Date(updatedIso).getTime() || 0;
+            if (
+              incomingTime >= existingTime &&
+              (existing.full_name !== cleanName || existing.points !== parsedPoints)
+            ) {
+              localCustomers[idx] = {
+                ...existing,
+                full_name: cleanName,
+                points: parsedPoints,
+                updated_at: updatedIso
+              };
+              changedCustomers = true;
+            }
+          }
+
+          if (isPostgresConnected && pool) {
+            try {
+              await pool.query(
+                `INSERT INTO customers (phone, full_name, points, updated_at)
+                 VALUES ($1, $2, $3, $4)
+                 ON CONFLICT (phone) DO UPDATE
+                 SET full_name = EXCLUDED.full_name,
+                     points = EXCLUDED.points,
+                     updated_at = EXCLUDED.updated_at`,
+                [cleanPhone, cleanName, parsedPoints, updatedIso]
+              );
+            } catch (pgErr) {
+              // Ignore individual PG sync error
+            }
+          }
+        }
+      }
+
+      if (Array.isArray(data.dailyLogs)) {
+        for (const log of data.dailyLogs) {
+          if (!log || !validatePhone(log.phone)) continue;
+          const cleanPhone = String(log.phone).trim();
+          const cleanName = sanitizeName(log.full_name);
+          const parsedPoints = parseInt(log.points, 10);
+          if (!cleanName || !validatePoints(parsedPoints)) continue;
+          const dateKey = log.date_key || getVietnamDateKey();
+          const createdIso = log.created_at || new Date().toISOString();
+
+          const logIdx = localDailyLogs.findIndex((l) => l.phone === cleanPhone);
+          if (logIdx === -1) {
+            const nextLogId =
+              localDailyLogs.reduce((maxId, l) => Math.max(maxId, l.id || 0), 0) + 1;
+            localDailyLogs.unshift({
+              id: nextLogId,
+              date_key: dateKey,
+              phone: cleanPhone,
+              full_name: cleanName,
+              points: parsedPoints,
+              created_at: createdIso
+            });
+            changedLogs = true;
+          } else {
+            const existingLog = localDailyLogs[logIdx];
+            if (existingLog.full_name !== cleanName || existingLog.points !== parsedPoints) {
+              localDailyLogs[logIdx] = {
+                ...existingLog,
+                full_name: cleanName,
+                points: parsedPoints
+              };
+              changedLogs = true;
+            }
+          }
+
+          if (isPostgresConnected && pool) {
+            try {
+              await pool.query(
+                `INSERT INTO daily_customer_logs (date_key, phone, full_name, points, created_at)
+                 VALUES ($1, $2, $3, $4, $5)
+                 ON CONFLICT (phone) DO UPDATE
+                 SET full_name = EXCLUDED.full_name,
+                     points = EXCLUDED.points`,
+                [dateKey, cleanPhone, cleanName, parsedPoints, createdIso]
+              );
+            } catch (pgErr) {
+              // Ignore individual PG sync error
+            }
+          }
+        }
+      }
+
+      if (changedCustomers) saveLocalStore();
+      if (changedLogs) saveDailyHistoryStore();
+      break;
+    } catch (err) {
+      // Try next backup bin
+    }
+  }
+}
+
+async function pushStateToCloud() {
+  for (const log of localDailyLogs) {
+    if (log && validatePhone(log.phone) && !cloudOverridesMap.has(log.phone)) {
+      const cust = localCustomers.find((c) => c.phone === log.phone);
+      if (cust) {
+        cloudOverridesMap.set(cust.phone, {
+          phone: cust.phone,
+          full_name: cust.full_name,
+          points: cust.points,
+          updated_at: cust.updated_at || new Date().toISOString()
+        });
+      }
+    }
+  }
+
+  const payload = JSON.stringify({
+    overrides: Array.from(cloudOverridesMap.values()),
+    dailyLogs: localDailyLogs
+  });
+
+  await Promise.allSettled(
+    CLOUD_STORAGE_BINS.map(async (binUrl) => {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 4000);
+      try {
+        await fetch(binUrl, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: payload,
+          signal: controller.signal
+        });
+      } finally {
+        clearTimeout(timeoutId);
+      }
+    })
+  );
+  lastCloudPullTime = Date.now();
+}
+
 async function initDatabase() {
   if (isInitialized) return;
   if (initPromise) return initPromise;
@@ -289,6 +486,7 @@ async function initDatabase() {
     }
     loadLocalStore();
     loadDailyHistoryStore();
+    await pullStateFromCloudIfNeeded(true);
 
     if (process.env.VERCEL && !connectionString) {
       isPostgresConnected = false;
@@ -388,6 +586,7 @@ async function initDatabase() {
 }
 
 async function getStats() {
+  await pullStateFromCloudIfNeeded();
   const daily = await getDailyStats();
   if (isPostgresConnected && pool) {
     const res = await pool.query(`
@@ -433,6 +632,7 @@ async function getStats() {
 }
 
 async function getDailyStats() {
+  await pullStateFromCloudIfNeeded();
   const todayDateKey = getVietnamDateKey();
   const todayDateDisplay = formatDateKeyVN(todayDateKey);
 
@@ -494,6 +694,7 @@ async function getDailyStats() {
 }
 
 async function findByPhone(phone) {
+  await pullStateFromCloudIfNeeded();
   const cleanPhone = String(phone || '').trim();
   if (!validatePhone(cleanPhone)) {
     throw new Error('Số điện thoại phải gồm đúng 10 chữ số và bắt đầu bằng số 0.');
@@ -524,6 +725,8 @@ async function createCustomer({ phone, full_name, points = 1 }) {
   if (!validatePoints(parsedPoints)) {
     throw new Error('Điểm tích lũy phải nằm trong khoảng từ 1 đến 10.');
   }
+
+  await pullStateFromCloudIfNeeded(true);
 
   const nowIso = new Date().toISOString();
   const todayDateKey = getVietnamDateKey(new Date(nowIso));
@@ -569,6 +772,14 @@ async function createCustomer({ phone, full_name, points = 1 }) {
       saveDailyHistoryStore();
     }
 
+    cloudOverridesMap.set(cleanPhone, {
+      phone: cleanPhone,
+      full_name: cleanName,
+      points: parsedPoints,
+      updated_at: nowIso
+    });
+    await pushStateToCloud();
+
     return res.rows[0];
   }
 
@@ -603,6 +814,14 @@ async function createCustomer({ phone, full_name, points = 1 }) {
   });
   saveDailyHistoryStore();
 
+  cloudOverridesMap.set(cleanPhone, {
+    phone: cleanPhone,
+    full_name: cleanName,
+    points: parsedPoints,
+    updated_at: nowIso
+  });
+  await pushStateToCloud();
+
   return newRecord;
 }
 
@@ -620,6 +839,9 @@ async function updateCustomer(phone, { full_name, points }) {
   if (!validatePoints(parsedPoints)) {
     throw new Error('Điểm tích lũy chỉ cho phép từ 1 đến 10.');
   }
+
+  await pullStateFromCloudIfNeeded(true);
+  const nowIso = new Date().toISOString();
 
   if (isPostgresConnected && pool) {
     const res = await pool.query(
@@ -659,6 +881,14 @@ async function updateCustomer(phone, { full_name, points }) {
       saveDailyHistoryStore();
     }
 
+    cloudOverridesMap.set(cleanPhone, {
+      phone: cleanPhone,
+      full_name: cleanName,
+      points: parsedPoints,
+      updated_at: nowIso
+    });
+    await pushStateToCloud();
+
     return res.rows[0];
   }
 
@@ -673,7 +903,7 @@ async function updateCustomer(phone, { full_name, points }) {
     ...localCustomers[idx],
     full_name: cleanName,
     points: parsedPoints,
-    updated_at: new Date().toISOString()
+    updated_at: nowIso
   };
   saveLocalStore();
 
@@ -684,10 +914,19 @@ async function updateCustomer(phone, { full_name, points }) {
     saveDailyHistoryStore();
   }
 
+  cloudOverridesMap.set(cleanPhone, {
+    phone: cleanPhone,
+    full_name: cleanName,
+    points: parsedPoints,
+    updated_at: nowIso
+  });
+  await pushStateToCloud();
+
   return localCustomers[idx];
 }
 
 async function listCustomers({ search = '', pointsFilter = 'all', limit = 1000, offset = 0 }) {
+  await pullStateFromCloudIfNeeded();
   const q = String(search || '').trim();
   const parsedLimit = Math.min(Math.max(parseInt(limit, 10) || 1000, 1), 2000);
   const parsedOffset = Math.max(parseInt(offset, 10) || 0, 0);
@@ -766,6 +1005,7 @@ async function listCustomers({ search = '', pointsFilter = 'all', limit = 1000, 
 }
 
 async function getAllForExport() {
+  await pullStateFromCloudIfNeeded();
   if (isPostgresConnected && pool) {
     const res = await pool.query(
       'SELECT id, phone, full_name, points, updated_at FROM customers ORDER BY points DESC, updated_at DESC'
@@ -776,6 +1016,7 @@ async function getAllForExport() {
 }
 
 async function syncClientRecords({ customers = [], dailyLogs = [] }) {
+  await pullStateFromCloudIfNeeded(true);
   let changedCustomers = false;
   let changedLogs = false;
 
@@ -787,6 +1028,13 @@ async function syncClientRecords({ customers = [], dailyLogs = [] }) {
       const parsedPoints = parseInt(item.points, 10);
       if (!cleanName || !validatePoints(parsedPoints)) continue;
       const updatedIso = item.updated_at || new Date().toISOString();
+
+      cloudOverridesMap.set(cleanPhone, {
+        phone: cleanPhone,
+        full_name: cleanName,
+        points: parsedPoints,
+        updated_at: updatedIso
+      });
 
       if (isPostgresConnected && pool) {
         await pool.query(
@@ -877,6 +1125,9 @@ async function syncClientRecords({ customers = [], dailyLogs = [] }) {
 
   if (changedCustomers) saveLocalStore();
   if (changedLogs) saveDailyHistoryStore();
+  if (changedCustomers || changedLogs) {
+    await pushStateToCloud();
+  }
 
   const [stats, dailyStats] = await Promise.all([getStats(), getDailyStats()]);
   return { stats, dailyStats };
