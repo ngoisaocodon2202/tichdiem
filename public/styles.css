@@ -631,7 +631,7 @@ body {
   background: rgba(255, 255, 255, 0.88);
   border: 1px solid var(--pink-200);
   border-radius: var(--radius-lg);
-  padding: clamp(11px, 3vw, 15px);
+  padding: clamp(10px, 2.5vw, 14px);
   margin-bottom: 14px;
 }
 
@@ -662,7 +662,7 @@ body {
 .hearts-grid {
   display: grid;
   grid-template-columns: repeat(5, 1fr);
-  gap: 6px;
+  gap: 5px;
 }
 
 .heart-slot {
@@ -671,7 +671,8 @@ body {
   align-items: center;
   justify-content: center;
   gap: 4px;
-  padding: 7px 4px;
+  padding: 6px 2px;
+  min-width: 0;
   border-radius: 12px;
   border: 1.5px solid var(--pink-200);
   background: #ffffff;
@@ -691,8 +692,8 @@ body {
 }
 
 .point-stamp-wrap {
-  width: clamp(38px, 9.5vw, 48px);
-  height: clamp(38px, 9.5vw, 48px);
+  width: clamp(36px, 9.2vw, 48px);
+  height: clamp(36px, 9.2vw, 48px);
   border-radius: 50%;
   background: #ffffff;
   display: flex;
@@ -723,10 +724,19 @@ body {
 }
 
 .heart-slot .slot-num {
-  font-size: 0.72rem;
+  font-size: clamp(0.56rem, 2.05vw, 0.7rem);
   font-weight: 800;
   color: var(--text-muted);
-  white-space: nowrap;
+  white-space: nowrap !important;
+  letter-spacing: -0.02em;
+  line-height: 1.15;
+  text-align: center;
+  width: 100%;
+}
+
+.heart-slot .slot-num.slot-num-gift {
+  font-size: clamp(0.49rem, 1.78vw, 0.62rem);
+  letter-spacing: -0.03em;
 }
 
 .heart-slot.filled .slot-num {
@@ -811,7 +821,7 @@ body {
 .point-selector-strip {
   display: grid;
   grid-template-columns: repeat(5, 1fr);
-  gap: 6px;
+  gap: 5px;
 }
 
 .point-pill {

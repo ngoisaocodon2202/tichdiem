@@ -343,21 +343,27 @@ document.addEventListener('DOMContentLoaded', () => {
     updateExistingPointsUI(currentPoints);
   }
 
+  function getPointRewardLabel(points) {
+    const pt = Number(points) || 1;
+    if (pt >= 1 && pt <= 3) return 'Giảm 10%';
+    if (pt === 4) return 'Giảm 15%';
+    if (pt === 5 || pt === 6) return 'Giảm 10%';
+    if (pt === 7) return 'Giảm 20%';
+    if (pt === 8 || pt === 9) return 'Giảm 10%';
+    if (pt === 10) return 'Tặng Sơn gel';
+    return 'Giảm 10%';
+  }
+
   function updateExistingPointsUI(points) {
     currentPoints = Math.min(Math.max(points, 1), 10);
     existingPointsBig.textContent = currentPoints;
 
     const pct = currentPoints * 10;
-    existingProgressBadge.textContent = `${currentPoints}/10 điểm (${pct}%)`;
+    const rewardText = getPointRewardLabel(currentPoints);
+    existingProgressBadge.textContent = `${currentPoints}/10 • ${rewardText}`;
     existingProgressBar.style.width = `${pct}%`;
 
-    if (currentPoints === 10) {
-      existingScoreStatusText.textContent = '👑 Đạt tối đa 10/10đ';
-    } else if (currentPoints >= 8) {
-      existingScoreStatusText.textContent = `🔥 Còn ${10 - currentPoints}đ đạt đỉnh`;
-    } else {
-      existingScoreStatusText.textContent = '💖 Đang tích điểm';
-    }
+    existingScoreStatusText.textContent = `🎁 ${rewardText}`;
 
     btnMinusExisting.disabled = currentPoints <= 1;
     btnPlusExisting.disabled = currentPoints >= 10;
@@ -365,15 +371,16 @@ document.addEventListener('DOMContentLoaded', () => {
     existingHeartsGrid.innerHTML = '';
     for (let i = 1; i <= 10; i++) {
       const isFilled = i <= currentPoints;
+      const slotReward = getPointRewardLabel(i);
       const slot = document.createElement('button');
       slot.type = 'button';
       slot.className = `heart-slot ${isFilled ? 'filled' : ''}`;
-      slot.title = `Chọn ${i} điểm`;
+      slot.title = `Mức ${i}: ${slotReward}`;
       slot.innerHTML = `
         <span class="point-stamp-wrap">
-          <img src="/point-icon.png?v=3" alt="${i} điểm" class="point-stamp-img" />
+          <img src="/point-icon.png?v=3" alt="${slotReward}" class="point-stamp-img" />
         </span>
-        <span class="slot-num">${i}đ</span>
+        <span class="slot-num ${i === 10 ? 'slot-num-gift' : ''}">${slotReward}</span>
       `;
       slot.addEventListener('click', () => {
         updateExistingPointsUI(i);
@@ -449,22 +456,24 @@ document.addEventListener('DOMContentLoaded', () => {
 
   function updateNewCustomerPointsUI(points) {
     newCustomerPoints = Math.min(Math.max(points, 1), 10);
-    newPointsBadge.textContent = `${newCustomerPoints} / 10đ`;
+    const rewardText = getPointRewardLabel(newCustomerPoints);
+    newPointsBadge.textContent = `${newCustomerPoints}/10 • ${rewardText}`;
     btnMinusNew.disabled = newCustomerPoints <= 1;
     btnPlusNew.disabled = newCustomerPoints >= 10;
 
     newPointsStrip.innerHTML = '';
     for (let i = 1; i <= 10; i++) {
       const isFilled = i <= newCustomerPoints;
+      const slotReward = getPointRewardLabel(i);
       const pill = document.createElement('button');
       pill.type = 'button';
       pill.className = `heart-slot ${isFilled ? 'filled' : ''}`;
-      pill.title = `Chọn ${i} điểm`;
+      pill.title = `Mức ${i}: ${slotReward}`;
       pill.innerHTML = `
         <span class="point-stamp-wrap">
-          <img src="/point-icon.png?v=3" alt="${i} điểm" class="point-stamp-img" />
+          <img src="/point-icon.png?v=3" alt="${slotReward}" class="point-stamp-img" />
         </span>
-        <span class="slot-num">${i}đ</span>
+        <span class="slot-num ${i === 10 ? 'slot-num-gift' : ''}">${slotReward}</span>
       `;
       pill.addEventListener('click', () => updateNewCustomerPointsUI(i));
       newPointsStrip.appendChild(pill);
