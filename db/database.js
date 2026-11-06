@@ -775,6 +775,113 @@ async function getAllForExport() {
   return [...localCustomers].sort((a, b) => b.points - a.points);
 }
 
+async function syncClientRecords({ customers = [], dailyLogs = [] }) {
+  let changedCustomers = false;
+  let changedLogs = false;
+
+  if (Array.isArray(customers)) {
+    for (const item of customers) {
+      if (!item || !validatePhone(item.phone)) continue;
+      const cleanPhone = String(item.phone).trim();
+      const cleanName = sanitizeName(item.full_name);
+      const parsedPoints = parseInt(item.points, 10);
+      if (!cleanName || !validatePoints(parsedPoints)) continue;
+      const updatedIso = item.updated_at || new Date().toISOString();
+
+      if (isPostgresConnected && pool) {
+        await pool.query(
+          `INSERT INTO customers (phone, full_name, points, updated_at)
+           VALUES ($1, $2, $3, $4)
+           ON CONFLICT (phone) DO UPDATE
+           SET full_name = EXCLUDED.full_name,
+               points = EXCLUDED.points,
+               updated_at = EXCLUDED.updated_at`,
+          [cleanPhone, cleanName, parsedPoints, updatedIso]
+        );
+      }
+
+      const idx = localCustomers.findIndex((c) => c.phone === cleanPhone);
+      if (idx === -1) {
+        const nextId =
+          localCustomers.reduce((maxId, c) => Math.max(maxId, c.id || 0), 0) + 1;
+        localCustomers.unshift({
+          id: nextId,
+          phone: cleanPhone,
+          full_name: cleanName,
+          points: parsedPoints,
+          updated_at: updatedIso
+        });
+        changedCustomers = true;
+      } else {
+        const existing = localCustomers[idx];
+        if (existing.full_name !== cleanName || existing.points !== parsedPoints) {
+          localCustomers[idx] = {
+            ...existing,
+            full_name: cleanName,
+            points: parsedPoints,
+            updated_at: updatedIso
+          };
+          changedCustomers = true;
+        }
+      }
+    }
+  }
+
+  if (Array.isArray(dailyLogs)) {
+    for (const log of dailyLogs) {
+      if (!log || !validatePhone(log.phone)) continue;
+      const cleanPhone = String(log.phone).trim();
+      const cleanName = sanitizeName(log.full_name);
+      const parsedPoints = parseInt(log.points, 10);
+      if (!cleanName || !validatePoints(parsedPoints)) continue;
+      const dateKey = log.date_key || getVietnamDateKey();
+      const createdIso = log.created_at || new Date().toISOString();
+
+      if (isPostgresConnected && pool) {
+        await pool.query(
+          `INSERT INTO daily_customer_logs (date_key, phone, full_name, points, created_at)
+           VALUES ($1, $2, $3, $4, $5)
+           ON CONFLICT (phone) DO UPDATE
+           SET full_name = EXCLUDED.full_name,
+               points = EXCLUDED.points`,
+          [dateKey, cleanPhone, cleanName, parsedPoints, createdIso]
+        );
+      }
+
+      const logIdx = localDailyLogs.findIndex((l) => l.phone === cleanPhone);
+      if (logIdx === -1) {
+        const nextLogId =
+          localDailyLogs.reduce((maxId, l) => Math.max(maxId, l.id || 0), 0) + 1;
+        localDailyLogs.unshift({
+          id: nextLogId,
+          date_key: dateKey,
+          phone: cleanPhone,
+          full_name: cleanName,
+          points: parsedPoints,
+          created_at: createdIso
+        });
+        changedLogs = true;
+      } else {
+        const existingLog = localDailyLogs[logIdx];
+        if (existingLog.full_name !== cleanName || existingLog.points !== parsedPoints) {
+          localDailyLogs[logIdx] = {
+            ...existingLog,
+            full_name: cleanName,
+            points: parsedPoints
+          };
+          changedLogs = true;
+        }
+      }
+    }
+  }
+
+  if (changedCustomers) saveLocalStore();
+  if (changedLogs) saveDailyHistoryStore();
+
+  const [stats, dailyStats] = await Promise.all([getStats(), getDailyStats()]);
+  return { stats, dailyStats };
+}
+
 module.exports = {
   initDatabase,
   getStats,
@@ -784,6 +891,7 @@ module.exports = {
   updateCustomer,
   listCustomers,
   getAllForExport,
+  syncClientRecords,
   validatePhone,
   validatePoints
 };

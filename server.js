@@ -106,7 +106,7 @@ app.post('/api/customers', async (req, res) => {
     const [stats, dailyStats] = await Promise.all([db.getStats(), db.getDailyStats()]);
     res.status(201).json({
       success: true,
-      message: `Đã thêm khách hàng "${created.full_name}" với ${created.points} điểm (+1 khách hôm nay)!`,
+      message: `Đã lưu "${created.full_name}" (${created.points}/10 điểm)!`,
       customer: created,
       stats,
       dailyStats
@@ -125,11 +125,23 @@ app.put('/api/customers/:phone', async (req, res) => {
   try {
     const phone = String(req.params.phone || '').trim();
     const { full_name, points } = req.body;
-    const updated = await db.updateCustomer(phone, { full_name, points });
+    let updated;
+    try {
+      updated = await db.updateCustomer(phone, { full_name, points });
+    } catch (updateErr) {
+      if (updateErr.code === 'NOT_FOUND') {
+        await db.syncClientRecords({
+          customers: [{ phone, full_name, points, updated_at: new Date().toISOString() }]
+        });
+        updated = await db.findByPhone(phone);
+      } else {
+        throw updateErr;
+      }
+    }
     const [stats, dailyStats] = await Promise.all([db.getStats(), db.getDailyStats()]);
     res.json({
       success: true,
-      message: `Đã cập nhật điểm tích lũy cho "${updated.full_name}" (${updated.points}/10 điểm)!`,
+      message: `Đã lưu "${updated.full_name}" (${updated.points}/10 điểm)!`,
       customer: updated,
       stats,
       dailyStats
@@ -140,6 +152,22 @@ app.put('/api/customers/:phone', async (req, res) => {
       success: false,
       message: err.message
     });
+  }
+});
+
+// 5b. Đồng bộ dữ liệu khách hàng & lịch sử ngày (Đảm bảo không mất dữ liệu khi reload trên Serverless)
+app.post('/api/sync', async (req, res) => {
+  try {
+    const { customers = [], dailyLogs = [] } = req.body || {};
+    const { stats, dailyStats } = await db.syncClientRecords({ customers, dailyLogs });
+    res.json({
+      success: true,
+      stats,
+      dailyStats,
+      total_customers: stats.total_customers
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
   }
 });
 

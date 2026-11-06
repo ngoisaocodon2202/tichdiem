@@ -96,6 +96,98 @@ document.addEventListener('DOMContentLoaded', () => {
   let newCustomerPoints = 1;
 
   const PHONE_REGEX = /^0\d{9}$/;
+  const BASE_SEED_COUNT = 749;
+  const SAVED_CUSTOMERS_KEY = 'tichdiem_saved_customers_v1';
+  const SAVED_DAILY_LOGS_KEY = 'tichdiem_daily_logs_v1';
+
+  function getSavedCustomersMap() {
+    try {
+      const raw = localStorage.getItem(SAVED_CUSTOMERS_KEY);
+      return raw ? JSON.parse(raw) || {} : {};
+    } catch (e) {
+      return {};
+    }
+  }
+
+  function setSavedCustomersMap(mapObj) {
+    try {
+      localStorage.setItem(SAVED_CUSTOMERS_KEY, JSON.stringify(mapObj));
+    } catch (e) {
+      // Ignore storage quota errors
+    }
+  }
+
+  function getSavedDailyLogs() {
+    try {
+      const raw = localStorage.getItem(SAVED_DAILY_LOGS_KEY);
+      const parsed = raw ? JSON.parse(raw) : [];
+      return Array.isArray(parsed) ? parsed : [];
+    } catch (e) {
+      return [];
+    }
+  }
+
+  function setSavedDailyLogs(logsArr) {
+    try {
+      localStorage.setItem(SAVED_DAILY_LOGS_KEY, JSON.stringify(logsArr));
+    } catch (e) {
+      // Ignore storage quota errors
+    }
+  }
+
+  function persistCustomerLocally(customer, isNewCreation = false) {
+    if (!customer || !customer.phone) return;
+    const map = getSavedCustomersMap();
+    const existing = map[customer.phone];
+    map[customer.phone] = {
+      id: customer.id || (existing && existing.id) || Date.now(),
+      phone: customer.phone,
+      full_name: customer.full_name,
+      points: Number(customer.points) || 1,
+      updated_at: customer.updated_at || new Date().toISOString(),
+      is_new: isNewCreation || Boolean(existing && existing.is_new)
+    };
+    setSavedCustomersMap(map);
+
+    const logs = getSavedDailyLogs();
+    const logIdx = logs.findIndex((l) => l.phone === customer.phone);
+    if (isNewCreation && logIdx === -1) {
+      logs.unshift({
+        date_key: getLocalVietnamDateKey(),
+        phone: customer.phone,
+        full_name: customer.full_name,
+        points: Number(customer.points) || 1,
+        created_at: customer.updated_at || new Date().toISOString()
+      });
+      setSavedDailyLogs(logs);
+    } else if (logIdx !== -1) {
+      logs[logIdx].full_name = customer.full_name;
+      logs[logIdx].points = Number(customer.points) || 1;
+      setSavedDailyLogs(logs);
+    }
+  }
+
+  async function syncSavedRecordsToServer() {
+    const map = getSavedCustomersMap();
+    const customers = Object.values(map);
+    const dailyLogs = getSavedDailyLogs();
+    if (customers.length === 0 && dailyLogs.length === 0) return null;
+
+    try {
+      const res = await fetch('/api/sync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ customers, dailyLogs })
+      });
+      const data = await res.json();
+      if (data && data.success) {
+        return data;
+      }
+    } catch (e) {
+      // Ignore network error
+    }
+    return null;
+  }
 
   function showToast(message, isError = false) {
     const container = document.getElementById('toastContainer');
@@ -197,12 +289,25 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   async function performPhoneLookup(phone) {
+    const savedMap = getSavedCustomersMap();
+    const localSaved = savedMap[phone] || null;
+
     try {
       const res = await fetch(`/api/customers/lookup/${encodeURIComponent(phone)}`);
       const data = await res.json();
 
       if (!res.ok || !data.success) {
+        if (localSaved) {
+          renderExistingCustomerCard(localSaved);
+          return;
+        }
         showToast(data.message || 'Lỗi khi tra cứu SĐT.', true);
+        return;
+      }
+
+      if (localSaved) {
+        renderExistingCustomerCard(localSaved);
+        syncSavedRecordsToServer();
         return;
       }
 
@@ -212,6 +317,10 @@ document.addEventListener('DOMContentLoaded', () => {
         renderNewCustomerForm(phone);
       }
     } catch (err) {
+      if (localSaved) {
+        renderExistingCustomerCard(localSaved);
+        return;
+      }
       showToast('Không thể kết nối máy chủ.', true);
     }
   }
@@ -307,6 +416,7 @@ document.addEventListener('DOMContentLoaded', () => {
       }
 
       currentCustomer = data.customer;
+      persistCustomerLocally(data.customer, false);
       renderExistingCustomerCard(data.customer);
       showToast(data.message || 'Đã cập nhật điểm thành công!');
       if (data.dailyStats) {
@@ -397,6 +507,7 @@ document.addEventListener('DOMContentLoaded', () => {
         return;
       }
 
+      persistCustomerLocally(data.customer, true);
       showToast(data.message || 'Đã tạo mới & tích điểm!');
       renderExistingCustomerCard(data.customer);
       if (data.dailyStats) {
@@ -460,21 +571,103 @@ document.addEventListener('DOMContentLoaded', () => {
     return `${d}/${m}/${y}`;
   }
 
-  function applyDailyStatsData(dailyData, totalCustCount = null) {
-    if (!dailyData) return;
-    cachedDailyStats = dailyData;
-    lastKnownDateKey = dailyData.todayDateKey;
+  function getEffectiveTotalCustomers(serverTotal = null) {
+    const savedMap = getSavedCustomersMap();
+    const localNewCount = Object.values(savedMap).filter((c) => c && c.is_new).length;
+    const minExpectedTotal = BASE_SEED_COUNT + localNewCount;
+    return Math.max(Number(serverTotal) || BASE_SEED_COUNT, minExpectedTotal);
+  }
 
-    if (totalCustCount !== null && statTotalCustomers) {
-      statTotalCustomers.textContent = totalCustCount;
+  function mergeWithLocalDailyStats(serverDailyData) {
+    const todayDateKey = getLocalVietnamDateKey();
+    const todayDateDisplay = formatDateDisplayVN(todayDateKey);
+    const localLogs = getSavedDailyLogs();
+    const savedMap = getSavedCustomersMap();
+
+    const byPhone = new Map();
+    if (serverDailyData && Array.isArray(serverDailyData.historyByDate)) {
+      for (const day of serverDailyData.historyByDate) {
+        if (Array.isArray(day.customers)) {
+          for (const c of day.customers) {
+            if (c && c.phone) {
+              const latest = savedMap[c.phone];
+              byPhone.set(c.phone, {
+                phone: c.phone,
+                full_name: latest ? latest.full_name : c.full_name,
+                points: latest ? latest.points : c.points,
+                created_at: c.created_at,
+                date_key: c.date_key || day.date_key
+              });
+            }
+          }
+        }
+      }
+    }
+
+    for (const log of localLogs) {
+      if (log && log.phone) {
+        const latest = savedMap[log.phone];
+        byPhone.set(log.phone, {
+          phone: log.phone,
+          full_name: latest ? latest.full_name : log.full_name,
+          points: latest ? latest.points : log.points,
+          created_at: log.created_at,
+          date_key: log.date_key || todayDateKey
+        });
+      }
+    }
+
+    const groupedMap = new Map();
+    groupedMap.set(todayDateKey, []);
+
+    for (const item of byPhone.values()) {
+      const dKey = item.date_key || todayDateKey;
+      if (!groupedMap.has(dKey)) {
+        groupedMap.set(dKey, []);
+      }
+      groupedMap.get(dKey).push(item);
+    }
+
+    const sortedDateKeys = Array.from(groupedMap.keys()).sort((a, b) => b.localeCompare(a));
+    const historyByDate = sortedDateKeys.map((dKey) => {
+      const customers = (groupedMap.get(dKey) || []).sort(
+        (a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime()
+      );
+      return {
+        date_key: dKey,
+        date_display: formatDateDisplayVN(dKey),
+        is_today: dKey === todayDateKey,
+        count: customers.length,
+        customers
+      };
+    });
+
+    const todayCustomers = groupedMap.get(todayDateKey) || [];
+
+    return {
+      todayDateKey,
+      todayDateDisplay,
+      todayCount: todayCustomers.length,
+      todayCustomers,
+      historyByDate
+    };
+  }
+
+  function applyDailyStatsData(dailyData, totalCustCount = null) {
+    const mergedDaily = mergeWithLocalDailyStats(dailyData);
+    cachedDailyStats = mergedDaily;
+    lastKnownDateKey = mergedDaily.todayDateKey;
+
+    if (statTotalCustomers) {
+      statTotalCustomers.textContent = getEffectiveTotalCustomers(totalCustCount);
     }
 
     if (statTodayCustomers) {
-      statTodayCustomers.textContent = dailyData.todayCount;
+      statTodayCustomers.textContent = mergedDaily.todayCount;
     }
 
     if (todayDateSubtitle) {
-      todayDateSubtitle.textContent = `Ngày ${dailyData.todayDateDisplay}`;
+      todayDateSubtitle.textContent = `Ngày ${mergedDaily.todayDateDisplay}`;
     }
 
     renderDailyHistoryContent();
@@ -486,10 +679,12 @@ document.addEventListener('DOMContentLoaded', () => {
       const json = await res.json();
       if (json.success && json.data) {
         applyDailyStatsData(json.data, json.total_customers ?? null);
+        return;
       }
     } catch (e) {
       // Ignore
     }
+    applyDailyStatsData(null, null);
   }
 
   function renderDailyHistoryContent() {
@@ -654,11 +849,13 @@ document.addEventListener('DOMContentLoaded', () => {
       const res = await fetch('/api/stats');
       const json = await res.json();
       if (json.success && json.data) {
-        statTotalCustomers.textContent = json.data.total_customers;
+        statTotalCustomers.textContent = getEffectiveTotalCustomers(json.data.total_customers);
+        return;
       }
     } catch (e) {
       // Ignore
     }
+    statTotalCustomers.textContent = getEffectiveTotalCustomers(null);
   }
 
   async function loadCustomerList() {
@@ -671,11 +868,57 @@ document.addEventListener('DOMContentLoaded', () => {
       const data = await res.json();
       if (!data.success) return;
 
-      if (listShowingCount) {
-        listShowingCount.textContent = data.total;
+      const savedMap = getSavedCustomersMap();
+      const mergedByPhone = new Map();
+
+      for (const savedCust of Object.values(savedMap)) {
+        if (savedCust && savedCust.phone) {
+          mergedByPhone.set(savedCust.phone, savedCust);
+        }
       }
 
-      if (!data.items || data.items.length === 0) {
+      if (Array.isArray(data.items)) {
+        for (const c of data.items) {
+          if (c && c.phone) {
+            if (savedMap[c.phone]) {
+              mergedByPhone.set(c.phone, {
+                ...c,
+                full_name: savedMap[c.phone].full_name,
+                points: savedMap[c.phone].points,
+                updated_at: savedMap[c.phone].updated_at || c.updated_at
+              });
+            } else {
+              mergedByPhone.set(c.phone, c);
+            }
+          }
+        }
+      }
+
+      let items = Array.from(mergedByPhone.values());
+      if (search) {
+        const qLower = search.toLowerCase();
+        items = items.filter(
+          (c) =>
+            c.phone.includes(qLower) ||
+            String(c.full_name || '')
+              .toLowerCase()
+              .includes(qLower)
+        );
+      }
+
+      items.sort(
+        (a, b) => new Date(b.updated_at || 0).getTime() - new Date(a.updated_at || 0).getTime()
+      );
+
+      const effectiveTotal = search ? items.length : getEffectiveTotalCustomers(data.total);
+      if (listShowingCount) {
+        listShowingCount.textContent = effectiveTotal;
+      }
+      if (!search && statTotalCustomers) {
+        statTotalCustomers.textContent = effectiveTotal;
+      }
+
+      if (items.length === 0) {
         customerListTableBody.innerHTML = `
           <tr>
             <td colspan="3" class="empty-cell">Không tìm thấy khách hàng phù hợp.</td>
@@ -684,7 +927,7 @@ document.addEventListener('DOMContentLoaded', () => {
         return;
       }
 
-      customerListTableBody.innerHTML = data.items
+      customerListTableBody.innerHTML = items
         .map(
           (c) => `
           <tr data-row-phone="${escapeHtml(c.phone)}" title="Chạm để chọn khách hàng này">
@@ -743,6 +986,13 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  loadTotalCustomers();
-  loadDailyStats();
+  (async () => {
+    const synced = await syncSavedRecordsToServer();
+    if (synced && synced.dailyStats) {
+      applyDailyStatsData(synced.dailyStats, synced.total_customers ?? null);
+    } else {
+      loadTotalCustomers();
+      loadDailyStats();
+    }
+  })();
 });

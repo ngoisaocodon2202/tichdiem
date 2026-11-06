@@ -1105,14 +1105,15 @@ body {
 
 .daily-icon-box {
   border-radius: 14px;
-  background: linear-gradient(145deg, #ffe4e6 0%, #fecdd3 100%);
+  background: #ffffff;
   border: 1.5px solid var(--rose-500);
 }
 
 .daily-icon-box .total-customers-icon {
-  width: 74%;
-  height: 74%;
+  width: 76%;
+  height: 76%;
   object-fit: contain;
+  filter: saturate(1.85) contrast(1.12);
 }
 
 .daily-panel-footer {
@@ -1159,6 +1160,7 @@ body {
   object-fit: contain;
   display: block;
   flex-shrink: 0;
+  filter: saturate(1.85) contrast(1.12);
 }
 
 .history-title-icon {
@@ -1167,6 +1169,7 @@ body {
   object-fit: contain;
   display: block;
   flex-shrink: 0;
+  filter: saturate(1.85) contrast(1.12);
 }
 
 .history-day-icon {
@@ -1175,6 +1178,7 @@ body {
   object-fit: contain;
   display: block;
   flex-shrink: 0;
+  filter: saturate(1.85) contrast(1.12);
 }
 
 .btn-history-pill:hover {
@@ -1381,18 +1385,26 @@ body {
 
 .toast {
   pointer-events: auto;
-  display: inline-flex;
+  display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 12px 16px;
-  border-radius: var(--radius-md);
+  justify-content: center;
+  gap: 7px;
+  padding: 11px 14px;
+  border-radius: 14px;
   background: rgba(255, 255, 255, 0.98);
+  border: 1.5px solid var(--pink-300);
   border-left: 4px solid var(--rose-500);
   box-shadow: 0 12px 28px -6px rgba(136, 19, 55, 0.28);
   color: var(--text-primary);
-  font-weight: 700;
-  font-size: 0.82rem;
-  max-width: 100%;
+  font-weight: 800;
+  font-size: clamp(0.76rem, 2.8vw, 0.84rem);
+  width: fit-content;
+  max-width: calc(100vw - 32px);
+  overflow: hidden;
+}
+
+.toast span:last-child {
+  min-width: 0;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
