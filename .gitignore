@@ -1,0 +1,8 @@
+node_modules/
+pgsql/
+pgsql_data/
+pgsql_server.log
+.env
+.vercel/
+*.tmp
+*.bak

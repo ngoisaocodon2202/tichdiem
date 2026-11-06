@@ -1,0 +1,20 @@
+{
+  "name": "customer-loyalty-system",
+  "version": "1.0.0",
+  "description": "Hệ Thống Quản Lý Điểm Tích Lũy Khách Hàng - Pink Glassmorphism Edition",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js",
+    "clean": "node scripts/clean_and_seed.js",
+    "db:setup": "node scripts/setup_postgres.js",
+    "seed": "node scripts/setup_postgres.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "pg": "^8.13.3"
+  }
+}
+

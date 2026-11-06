@@ -1,0 +1,26 @@
+{
+  "name": "Tích Điểm",
+  "short_name": "Tích Điểm",
+  "description": "Min Nails Design - Hệ Thống Tích Điểm Khách Hàng",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#ffe4e6",
+  "theme_color": "#f43f5e",
+  "icons": [
+    {
+      "src": "/logo.jpg",
+      "sizes": "192x192",
+      "type": "image/jpeg",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/logo.jpg",
+      "sizes": "512x512",
+      "type": "image/jpeg",
+      "purpose": "any maskable"
+    }
+  ]
+}
+

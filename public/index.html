@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Tích Điểm</title>
+  <meta name="application-name" content="Tích Điểm" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="apple-mobile-web-app-title" content="Tích Điểm" />
+  <meta name="theme-color" content="#f43f5e" />
+  <link rel="manifest" href="/manifest.json" />
+  <link rel="icon" type="image/jpeg" href="/logo.jpg" />
+  <link rel="shortcut icon" type="image/jpeg" href="/logo.jpg" />
+  <link rel="apple-touch-icon" href="/logo.jpg" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700;800;900&family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <div class="bg-blob bg-blob-1"></div>
+  <div class="bg-blob bg-blob-2"></div>
+
+  <main class="app-container">
+    <!-- HEADER -->
+    <header class="glass-card app-header">
+      <div class="brand-group">
+        <div class="brand-logo">
+          <img src="/logo.jpg" alt="Tích Điểm - Min Nails Design" class="brand-logo-img" />
+        </div>
+        <div class="brand-text-wrap">
+          <h1 class="brand-title">Tích Điểm</h1>
+          <p class="brand-subtitle">Min Nails Design • Khách Hàng Thân Thiết</p>
+        </div>
+      </div>
+
+      <button type="button" class="btn btn-install" id="btnAddToHomeScreen">
+        <img src="/phone-icon.png" alt="" class="phone-pill-icon phone-ring-anim" />
+        <span>Thêm Vào Màn Hình Chính</span>
+      </button>
+    </header>
+
+    <!-- CORE PANEL: PHONE LOOKUP BAR -->
+    <section class="glass-card" aria-labelledby="lookupHeading">
+      <div class="lookup-header">
+        <h2 class="section-title" id="lookupHeading">
+          <img src="/search-icon.png" alt="Tra cứu" class="search-custom-icon" />
+          <span>Tra Cứu Số Điện Thoại</span>
+        </h2>
+        <span class="badge badge-pink-soft">Chuẩn 10 số</span>
+      </div>
+
+      <form id="lookupForm" novalidate>
+        <div class="lookup-input-group">
+          <div class="phone-input-wrapper">
+            <img src="/phone-icon.png" alt="SĐT" class="phone-prefix-icon phone-ring-anim" />
+            <input
+              type="tel"
+              id="phoneLookupInput"
+              class="phone-input"
+              placeholder="Nhập 10 số điện thoại"
+              maxlength="10"
+              inputmode="numeric"
+              pattern="^0[0-9]{9}$"
+              autocomplete="off"
+              aria-label="Số điện thoại khách hàng"
+            />
+            <span class="char-counter" id="phoneCharCounter">0/10</span>
+            <button type="button" class="clear-input-btn" id="clearPhoneBtn" title="Xóa SĐT">✕</button>
+          </div>
+          <button type="submit" class="btn btn-primary" id="btnLookupSubmit">
+            <img src="/search-icon.png" alt="" class="btn-search-icon" />
+            <span>Tra cứu ngay</span>
+          </button>
+        </div>
+
+        <div class="validation-msg" id="phoneValidationMsg" role="status" aria-live="polite">
+          <span>💡 Nhập đủ 10 số bắt đầu bằng 0 để tự động tra cứu.</span>
+        </div>
+      </form>
+    </section>
+
+    <!-- CASE 1: EXISTING CUSTOMER CARD -->
+    <section id="existingCustomerPanel" class="glass-card loyalty-card result-panel" aria-live="polite">
+      <div class="loyalty-card-top">
+        <div class="customer-info-col">
+          <div class="customer-tag-row">
+            <span class="customer-tag">
+              <img src="/customer-icon.png" alt="" class="customer-tag-icon" />
+              <span>Khách Hàng Cũ</span>
+            </span>
+            <div class="phone-display-pill">
+              <img src="/phone-icon.png" alt="" class="phone-pill-icon phone-ring-anim" />
+              <span id="existingCustomerPhoneText">0792271022</span>
+            </div>
+          </div>
+
+          <div class="editable-name-group">
+            <label for="existingCustomerNameInput" class="field-label">
+              Tên khách hàng (Chạm để sửa tên):
+            </label>
+            <input
+              type="text"
+              id="existingCustomerNameInput"
+              class="name-input"
+              maxlength="150"
+              placeholder="Nhập tên khách hàng..."
+            />
+          </div>
+          <div class="updated-time-text" id="existingCustomerUpdatedText"></div>
+        </div>
+
+        <div class="score-badge-box">
+          <div class="score-number-wrap">
+            <span class="score-big" id="existingPointsBig">5</span>
+            <span class="score-max">/ 10</span>
+          </div>
+          <div class="score-caption" id="existingScoreStatusText">💖 Đang tích điểm</div>
+        </div>
+      </div>
+
+      <!-- 10 Nail Stamp Progress Bar -->
+      <div class="progress-section">
+        <div class="progress-header">
+          <span class="field-label">Chọn nhanh mức điểm (1 – 10):</span>
+          <span class="badge badge-pink-soft" id="existingProgressBadge">5/10 điểm</span>
+        </div>
+        <div class="progress-bar-track">
+          <div class="progress-bar-fill" id="existingProgressBar" style="width: 50%;"></div>
+        </div>
+        <div class="hearts-grid" id="existingHeartsGrid"></div>
+      </div>
+
+      <!-- Quick Controls: -1 / +1 & Save Button -->
+      <div class="controls-row">
+        <div class="stepper-group">
+          <button type="button" class="btn btn-stepper btn-minus" id="btnMinusExisting">
+            <span>➖</span>
+            <span>-1 Điểm</span>
+          </button>
+          <button type="button" class="btn btn-stepper btn-plus" id="btnPlusExisting">
+            <span>➕</span>
+            <span>+1 Điểm</span>
+          </button>
+        </div>
+
+        <button type="button" class="btn btn-primary btn-save-main" id="btnUpdateCustomer">
+          <span>💝</span>
+          <span>Cập nhật điểm</span>
+        </button>
+      </div>
+    </section>
+
+    <!-- CASE 2: NEW CUSTOMER QUICK CREATE FORM -->
+    <section id="newCustomerPanel" class="glass-card new-customer-card result-panel" aria-live="polite">
+      <div class="new-customer-banner">
+        <span>🌸</span>
+        <span>SĐT chưa có • Tạo mới khách hàng ngay!</span>
+      </div>
+
+      <form id="createCustomerForm">
+        <div class="form-grid">
+          <div class="editable-name-group">
+            <label for="newCustomerPhoneInput" class="field-label">Số điện thoại đăng ký:</label>
+            <input
+              type="text"
+              id="newCustomerPhoneInput"
+              class="name-input input-readonly"
+              readonly
+            />
+          </div>
+
+          <div class="editable-name-group">
+            <label for="newCustomerNameInput" class="field-label">Tên khách hàng (Bắt buộc) *:</label>
+            <input
+              type="text"
+              id="newCustomerNameInput"
+              class="name-input"
+              placeholder="Nhập tên khách hàng..."
+              maxlength="150"
+              required
+            />
+          </div>
+        </div>
+
+        <div class="progress-section">
+          <div class="progress-header">
+            <label class="field-label">Điểm tích ban đầu (1 – 10):</label>
+            <div class="mini-stepper-wrap">
+              <button type="button" class="btn btn-secondary btn-xs" id="btnMinusNew">-1</button>
+              <span class="badge badge-pink-solid" id="newPointsBadge">1 / 10đ</span>
+              <button type="button" class="btn btn-secondary btn-xs" id="btnPlusNew">+1</button>
+            </div>
+          </div>
+          <div class="point-selector-strip" id="newPointsStrip"></div>
+        </div>
+
+        <div class="controls-row controls-end">
+          <button type="submit" class="btn btn-primary btn-save-main" id="btnSaveNewCustomer">
+            <span>✨</span>
+            <span>Lưu &amp; Tích Điểm</span>
+          </button>
+        </div>
+      </form>
+    </section>
+
+    <!-- TOTAL CUSTOMERS PANEL -->
+    <section class="glass-card total-customers-panel" aria-label="Tổng số khách hàng">
+      <div class="total-customers-left">
+        <div class="total-customers-icon-box">
+          <img src="/customer-icon.png" alt="Tổng số khách" class="total-customers-icon" />
+        </div>
+        <div class="total-customers-text">
+          <span class="total-customers-label">Tổng Khách Hàng</span>
+          <span class="total-customers-sub">Bấm xem danh sách</span>
+        </div>
+      </div>
+
+      <button type="button" class="total-customers-badge" id="btnToggleCustomerList">
+        <span class="total-customers-num" id="statTotalCustomers">749</span>
+        <span class="total-customers-unit" id="toggleListLabel">Khách ▾</span>
+      </button>
+    </section>
+
+    <!-- FULL CUSTOMER LIST PANEL (Toggled by clicking the Total Customers button) -->
+    <section id="customerListPanel" class="glass-card customer-list-panel result-panel" aria-live="polite">
+      <div class="customer-list-header">
+        <h3 class="section-title">
+          <img src="/customer-icon.png" alt="" class="customer-tag-icon" />
+          <span>Danh Sách (<span id="listShowingCount">749</span> KH)</span>
+        </h3>
+        <button type="button" class="btn btn-secondary btn-xs" id="btnCloseCustomerList">Đóng ✕</button>
+      </div>
+
+      <div class="customer-list-search-wrap">
+        <input
+          type="search"
+          id="customerListSearchInput"
+          class="name-input customer-search-input"
+          placeholder="Tìm theo Tên hoặc Số điện thoại"
+        />
+      </div>
+
+      <div class="table-responsive customer-table-scroll">
+        <table class="customer-table">
+          <thead>
+            <tr>
+              <th>Tên Khách Hàng</th>
+              <th>Số Điện Thoại</th>
+              <th>Điểm Tích</th>
+            </tr>
+          </thead>
+          <tbody id="customerListTableBody">
+            <tr>
+              <td colspan="3" class="empty-cell">Đang tải danh sách khách hàng</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- TODAY'S CUSTOMERS PANEL (Lượng Khách Ngày Hôm Nay) -->
+    <section class="glass-card daily-customers-panel" aria-label="Lượng khách ngày hôm nay">
+      <div class="daily-customers-top">
+        <div class="total-customers-left">
+          <div class="total-customers-icon-box daily-icon-box">
+            <img src="/history-icon.png" alt="Khách hôm nay" class="total-customers-icon" />
+          </div>
+          <div class="total-customers-text">
+            <span class="total-customers-label">Khách Hôm Nay</span>
+            <span class="total-customers-sub" id="todayDateSubtitle">Ngày 06/11/2026</span>
+          </div>
+        </div>
+
+        <button type="button" class="total-customers-badge daily-customers-badge" id="btnToggleDailyHistory">
+          <span class="total-customers-num" id="statTodayCustomers">0</span>
+          <span class="total-customers-unit" id="toggleDailyHistoryLabel">Khách ▾</span>
+        </button>
+      </div>
+
+      <div class="daily-panel-footer">
+        <span class="daily-reset-note">🕛 Hết ngày tự reset về 0</span>
+        <button type="button" class="btn-history-pill" id="btnViewDailyHistory">
+          <img src="/history-icon.png" alt="" class="history-btn-icon" />
+          <span>Lịch sử ngày</span>
+        </button>
+      </div>
+    </section>
+
+    <!-- DAILY HISTORY PANEL (Lịch Sử Khách Mới Theo Ngày) -->
+    <section id="dailyHistoryPanel" class="glass-card customer-list-panel daily-history-panel result-panel" aria-live="polite">
+      <div class="customer-list-header">
+        <h3 class="section-title">
+          <img src="/history-icon.png" alt="" class="history-title-icon" />
+          <span>Lịch Sử Khách Mới</span>
+        </h3>
+        <button type="button" class="btn btn-secondary btn-xs" id="btnCloseDailyHistory">Đóng ✕</button>
+      </div>
+
+      <div class="daily-history-filter-bar">
+        <input
+          type="date"
+          id="dailyHistoryDateInput"
+          class="name-input daily-date-input"
+          aria-label="Chọn ngày xem lịch sử"
+        />
+        <button type="button" class="btn btn-secondary btn-xs" id="btnShowAllHistoryDates">
+          Tất cả ngày
+        </button>
+      </div>
+
+      <div class="daily-history-list" id="dailyHistoryContent">
+        <div class="empty-cell">Đang tải lịch sử khách mới</div>
+      </div>
+    </section>
+  </main>
+
+  <!-- MODAL HƯỚNG DẪN THÊM VÀO MÀN HÌNH CHÍNH (Dành cho iOS Safari / Trình duyệt không tự bung prompt) -->
+  <div class="a2hs-modal-backdrop" id="a2hsModalBackdrop" aria-hidden="true">
+    <div class="a2hs-modal glass-card" role="dialog" aria-labelledby="a2hsModalTitle">
+      <div class="a2hs-modal-header">
+        <div class="brand-logo a2hs-logo">
+          <img src="/logo.jpg" alt="Tích Điểm" class="brand-logo-img" />
+        </div>
+        <div>
+          <h3 class="a2hs-title" id="a2hsModalTitle">Thêm App "Tích Điểm"</h3>
+          <p class="a2hs-subtitle">Ra màn hình chính điện thoại</p>
+        </div>
+      </div>
+
+      <div class="a2hs-steps" id="a2hsStepsContent">
+        <div class="a2hs-step-item">
+          <span class="step-num">1</span>
+          <span>Bấm nút <strong>Chia sẻ (Share ⬆️)</strong> hoặc <strong>Menu (⋮)</strong> trên trình duyệt.</span>
+        </div>
+        <div class="a2hs-step-item">
+          <span class="step-num">2</span>
+          <span>Chọn <strong>"Thêm vào MH chính"</strong> <em>(Add to Home Screen)</em>.</span>
+        </div>
+        <div class="a2hs-step-item">
+          <span class="step-num">3</span>
+          <span>Bấm <strong>"Thêm" (Add)</strong> — App tên <strong>Tích Điểm</strong> sẽ xuất hiện ngay ngoài màn hình!</span>
+        </div>
+      </div>
+
+      <button type="button" class="btn btn-primary btn-save-main" id="btnCloseA2hsModal">
+        <span>👍</span>
+        <span>Đã hiểu</span>
+      </button>
+    </div>
+  </div>
+
+  <div class="toast-container" id="toastContainer" aria-live="assertive"></div>
+
+  <script src="/app.js"></script>
+</body>
+</html>
