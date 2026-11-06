@@ -316,6 +316,41 @@
     </section>
   </main>
 
+  <!-- MODAL HƯỚNG DẪN THÊM VÀO MÀN HÌNH CHÍNH (Dành cho iOS Safari / Trình duyệt không tự bung prompt) -->
+  <div class="a2hs-modal-backdrop" id="a2hsModalBackdrop" aria-hidden="true">
+    <div class="a2hs-modal glass-card" role="dialog" aria-labelledby="a2hsModalTitle">
+      <div class="a2hs-modal-header">
+        <div class="brand-logo a2hs-logo">
+          <img src="/logo.jpg" alt="Tích Điểm" class="brand-logo-img" />
+        </div>
+        <div>
+          <h3 class="a2hs-title" id="a2hsModalTitle">Thêm App "Tích Điểm"</h3>
+          <p class="a2hs-subtitle">Ra màn hình chính điện thoại</p>
+        </div>
+      </div>
+
+      <div class="a2hs-steps" id="a2hsStepsContent">
+        <div class="a2hs-step-item">
+          <span class="step-num">1</span>
+          <span>Bấm nút <strong>Chia sẻ (Share ⬆️)</strong> hoặc <strong>Menu (⋮)</strong> trên trình duyệt.</span>
+        </div>
+        <div class="a2hs-step-item">
+          <span class="step-num">2</span>
+          <span>Chọn <strong>"Thêm vào MH chính"</strong> <em>(Add to Home Screen)</em>.</span>
+        </div>
+        <div class="a2hs-step-item">
+          <span class="step-num">3</span>
+          <span>Bấm <strong>"Thêm" (Add)</strong> — App tên <strong>Tích Điểm</strong> sẽ xuất hiện ngay ngoài màn hình!</span>
+        </div>
+      </div>
+
+      <button type="button" class="btn btn-primary btn-save-main" id="btnCloseA2hsModal">
+        <span>👍</span>
+        <span>Đã hiểu</span>
+      </button>
+    </div>
+  </div>
+
   <div class="toast-container" id="toastContainer" aria-live="assertive"></div>
 
   <script src="/app.js"></script>
