@@ -763,6 +763,8 @@ document.addEventListener('DOMContentLoaded', () => {
     applyDailyStatsData(null, null);
   }
 
+  let lastRenderedDailyHtml = '';
+
   function renderDailyHistoryContent() {
     if (!dailyHistoryContent || !cachedDailyStats) return;
 
@@ -787,13 +789,17 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     if (daysToRender.length === 0) {
-      dailyHistoryContent.innerHTML = `
+      const emptyHtml = `
         <div class="daily-empty-box">Chưa có lịch sử khách hàng mới theo ngày.</div>
       `;
+      if (lastRenderedDailyHtml !== emptyHtml) {
+        lastRenderedDailyHtml = emptyHtml;
+        dailyHistoryContent.innerHTML = emptyHtml;
+      }
       return;
     }
 
-    dailyHistoryContent.innerHTML = daysToRender
+    const newHtml = daysToRender
       .map((day) => {
         const dayLabel = day.is_today
           ? `Hôm nay (${escapeHtml(day.date_display)})`
@@ -850,6 +856,14 @@ document.addEventListener('DOMContentLoaded', () => {
       `;
       })
       .join('');
+
+    if (newHtml === lastRenderedDailyHtml) {
+      return;
+    }
+    const prevScrollTop = dailyHistoryContent.scrollTop;
+    lastRenderedDailyHtml = newHtml;
+    dailyHistoryContent.innerHTML = newHtml;
+    dailyHistoryContent.scrollTop = prevScrollTop;
 
     dailyHistoryContent.querySelectorAll('tr[data-history-phone]').forEach((row) => {
       row.addEventListener('click', () => {
