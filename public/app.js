@@ -6,9 +6,14 @@ window.addEventListener('beforeinstallprompt', (e) => {
 });
 
 document.addEventListener('DOMContentLoaded', () => {
-  // Register Service Worker for PWA ("Tích Điểm")
+  // Register & Force-Update Service Worker for PWA ("Tích Điểm")
   if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('/sw.js').catch(() => {});
+    navigator.serviceWorker
+      .register('/sw.js?v=20261107_2')
+      .then((reg) => {
+        reg.update().catch(() => {});
+      })
+      .catch(() => {});
   }
 
   // PWA Add to Home Screen Logic
@@ -171,6 +176,24 @@ document.addEventListener('DOMContentLoaded', () => {
     const map = getSavedCustomersMap();
     const customers = Object.values(map);
     const dailyLogs = getSavedDailyLogs();
+
+    // Đảm bảo mọi khách hàng tạo mới (is_new: true) trong máy đều có mặt trong dailyLogs khi đẩy lên Cloud
+    for (const cust of customers) {
+      if (cust && cust.phone && cust.is_new) {
+        if (!dailyLogs.some((l) => l && l.phone === cust.phone)) {
+          const dKey = cust.updated_at
+            ? getLocalVietnamDateKey(new Date(cust.updated_at))
+            : getLocalVietnamDateKey();
+          dailyLogs.unshift({
+            date_key: dKey,
+            phone: cust.phone,
+            full_name: cust.full_name,
+            points: Number(cust.points) || 1,
+            created_at: cust.updated_at || new Date().toISOString()
+          });
+        }
+      }
+    }
 
     try {
       const res = await fetch(`/api/sync?_t=${Date.now()}`, {
@@ -603,13 +626,15 @@ document.addEventListener('DOMContentLoaded', () => {
   let cachedDailyStats = null;
   let lastKnownDateKey = null;
 
-  function getLocalVietnamDateKey() {
+  function getLocalVietnamDateKey(dateObj = new Date()) {
+    const safeDate =
+      dateObj instanceof Date && !Number.isNaN(dateObj.getTime()) ? dateObj : new Date();
     const parts = new Intl.DateTimeFormat('en-CA', {
       timeZone: 'Asia/Ho_Chi_Minh',
       year: 'numeric',
       month: '2-digit',
       day: '2-digit'
-    }).formatToParts(new Date());
+    }).formatToParts(safeDate);
     const y = parts.find((p) => p.type === 'year').value;
     const m = parts.find((p) => p.type === 'month').value;
     const d = parts.find((p) => p.type === 'day').value;

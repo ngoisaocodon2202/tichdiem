@@ -11,7 +11,24 @@ const PORT = parseInt(process.env.PORT || '3000', 10);
 
 app.use(cors());
 app.use(express.json({ limit: '2mb' }));
-app.use(express.static(path.join(__dirname, 'public')));
+
+// Ngăn chặn lỗi 304 Not Modified trên Vercel (do Vercel cố định mtime năm 2018 cho file tĩnh)
+app.use((req, res, next) => {
+  delete req.headers['if-modified-since'];
+  delete req.headers['if-none-match'];
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
+  next();
+});
+
+app.use(
+  express.static(path.join(__dirname, 'public'), {
+    etag: false,
+    lastModified: false,
+    maxAge: 0
+  })
+);
 
 // Đảm bảo Database được khởi tạo tự động cho cả Local & Vercel Serverless và không bị cache API
 app.use('/api', async (req, res, next) => {
