@@ -48,6 +48,7 @@ const CLOUD_STORAGE_BINS = [
 ];
 const cloudOverridesMap = new Map();
 let lastCloudPullTime = 0;
+let cloudPullPromise = null;
 
 function getVietnamDateKey(dateObj = new Date()) {
   const parts = new Intl.DateTimeFormat('en-CA', {
@@ -283,20 +284,19 @@ function ensureLocalPostgresEngineStarted() {
   }
 }
 
-async function pullStateFromCloudIfNeeded(force = false) {
-  const now = Date.now();
-  if (!force && now - lastCloudPullTime < 1500) {
-    return;
-  }
-  lastCloudPullTime = now;
-
+async function doPullFromCloud() {
   for (const binUrl of CLOUD_STORAGE_BINS) {
     try {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 3500);
-      const res = await fetch(binUrl, {
+      const timeoutId = setTimeout(() => controller.abort(), 5000);
+      const bustUrl = `${binUrl}?_t=${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+      const res = await fetch(bustUrl, {
         method: 'GET',
-        headers: { Accept: 'application/json', 'Cache-Control': 'no-cache' },
+        headers: {
+          Accept: 'application/json',
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          Pragma: 'no-cache'
+        },
         signal: controller.signal
       });
       clearTimeout(timeoutId);
@@ -317,12 +317,20 @@ async function pullStateFromCloudIfNeeded(force = false) {
           if (!cleanName || !validatePoints(parsedPoints)) continue;
           const updatedIso = item.updated_at || new Date().toISOString();
 
-          cloudOverridesMap.set(cleanPhone, {
-            phone: cleanPhone,
-            full_name: cleanName,
-            points: parsedPoints,
-            updated_at: updatedIso
-          });
+          const existingOverride = cloudOverridesMap.get(cleanPhone);
+          const existingOverrideTime = existingOverride
+            ? new Date(existingOverride.updated_at || 0).getTime() || 0
+            : 0;
+          const incomingTime = new Date(updatedIso).getTime() || 0;
+
+          if (!existingOverride || incomingTime >= existingOverrideTime) {
+            cloudOverridesMap.set(cleanPhone, {
+              phone: cleanPhone,
+              full_name: cleanName,
+              points: parsedPoints,
+              updated_at: updatedIso
+            });
+          }
 
           const idx = localCustomers.findIndex((c) => c.phone === cleanPhone);
           if (idx === -1) {
@@ -339,7 +347,6 @@ async function pullStateFromCloudIfNeeded(force = false) {
           } else {
             const existing = localCustomers[idx];
             const existingTime = new Date(existing.updated_at || 0).getTime() || 0;
-            const incomingTime = new Date(updatedIso).getTime() || 0;
             if (
               incomingTime >= existingTime &&
               (existing.full_name !== cleanName || existing.points !== parsedPoints)
@@ -376,8 +383,12 @@ async function pullStateFromCloudIfNeeded(force = false) {
         for (const log of data.dailyLogs) {
           if (!log || !validatePhone(log.phone)) continue;
           const cleanPhone = String(log.phone).trim();
-          const cleanName = sanitizeName(log.full_name);
-          const parsedPoints = parseInt(log.points, 10);
+          const latestOverride = cloudOverridesMap.get(cleanPhone);
+          const cleanName = sanitizeName(latestOverride ? latestOverride.full_name : log.full_name);
+          const parsedPoints = parseInt(
+            latestOverride ? latestOverride.points : log.points,
+            10
+          );
           if (!cleanName || !validatePoints(parsedPoints)) continue;
           const dateKey = log.date_key || getVietnamDateKey();
           const createdIso = log.created_at || new Date().toISOString();
@@ -426,6 +437,7 @@ async function pullStateFromCloudIfNeeded(force = false) {
 
       if (changedCustomers) saveLocalStore();
       if (changedLogs) saveDailyHistoryStore();
+      lastCloudPullTime = Date.now();
       break;
     } catch (err) {
       // Try next backup bin
@@ -433,7 +445,24 @@ async function pullStateFromCloudIfNeeded(force = false) {
   }
 }
 
+async function pullStateFromCloudIfNeeded(force = false) {
+  if (cloudPullPromise) {
+    return cloudPullPromise;
+  }
+  const now = Date.now();
+  if (!force && lastCloudPullTime > 0 && now - lastCloudPullTime < 1500) {
+    return;
+  }
+  cloudPullPromise = doPullFromCloud().finally(() => {
+    cloudPullPromise = null;
+  });
+  return cloudPullPromise;
+}
+
 async function pushStateToCloud() {
+  // Luôn kéo và hợp nhất dữ liệu mới nhất từ Cloud trước khi ghi để không bao giờ ghi đè mất khách của máy khác
+  await pullStateFromCloudIfNeeded(true);
+
   for (const log of localDailyLogs) {
     if (log && validatePhone(log.phone) && !cloudOverridesMap.has(log.phone)) {
       const cust = localCustomers.find((c) => c.phone === log.phone);
@@ -456,7 +485,7 @@ async function pushStateToCloud() {
   await Promise.allSettled(
     CLOUD_STORAGE_BINS.map(async (binUrl) => {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 4000);
+      const timeoutId = setTimeout(() => controller.abort(), 5000);
       try {
         await fetch(binUrl, {
           method: 'PUT',
@@ -1125,12 +1154,19 @@ async function syncClientRecords({ customers = [], dailyLogs = [] }) {
 
   if (changedCustomers) saveLocalStore();
   if (changedLogs) saveDailyHistoryStore();
-  if (changedCustomers || changedLogs) {
+  const hasIncomingPayload =
+    (Array.isArray(customers) && customers.length > 0) ||
+    (Array.isArray(dailyLogs) && dailyLogs.length > 0);
+  if (changedCustomers || changedLogs || hasIncomingPayload) {
     await pushStateToCloud();
   }
 
   const [stats, dailyStats] = await Promise.all([getStats(), getDailyStats()]);
-  return { stats, dailyStats };
+  return {
+    stats,
+    dailyStats,
+    overrides: Array.from(cloudOverridesMap.values())
+  };
 }
 
 module.exports = {

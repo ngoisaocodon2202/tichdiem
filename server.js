@@ -13,8 +13,11 @@ app.use(cors());
 app.use(express.json({ limit: '2mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Đảm bảo Database được khởi tạo tự động cho cả Local & Vercel Serverless
+// Đảm bảo Database được khởi tạo tự động cho cả Local & Vercel Serverless và không bị cache API
 app.use('/api', async (req, res, next) => {
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
   try {
     await db.initDatabase();
     next();
@@ -155,15 +158,19 @@ app.put('/api/customers/:phone', async (req, res) => {
   }
 });
 
-// 5b. Đồng bộ dữ liệu khách hàng & lịch sử ngày (Đảm bảo không mất dữ liệu khi reload trên Serverless)
+// 5b. Đồng bộ dữ liệu khách hàng & lịch sử ngày (Đảm bảo không mất dữ liệu khi reload trên Serverless & đồng bộ giữa mọi thiết bị)
 app.post('/api/sync', async (req, res) => {
   try {
     const { customers = [], dailyLogs = [] } = req.body || {};
-    const { stats, dailyStats } = await db.syncClientRecords({ customers, dailyLogs });
+    const { stats, dailyStats, overrides } = await db.syncClientRecords({
+      customers,
+      dailyLogs
+    });
     res.json({
       success: true,
       stats,
       dailyStats,
+      overrides: overrides || [],
       total_customers: stats.total_customers
     });
   } catch (err) {

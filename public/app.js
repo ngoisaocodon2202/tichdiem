@@ -171,16 +171,56 @@ document.addEventListener('DOMContentLoaded', () => {
     const map = getSavedCustomersMap();
     const customers = Object.values(map);
     const dailyLogs = getSavedDailyLogs();
-    if (customers.length === 0 && dailyLogs.length === 0) return null;
 
     try {
-      const res = await fetch('/api/sync', {
+      const res = await fetch(`/api/sync?_t=${Date.now()}`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'Cache-Control': 'no-cache'
+        },
+        cache: 'no-store',
         body: JSON.stringify({ customers, dailyLogs })
       });
       const data = await res.json();
       if (data && data.success) {
+        if (Array.isArray(data.overrides) && data.overrides.length > 0) {
+          const updatedMap = getSavedCustomersMap();
+          for (const item of data.overrides) {
+            if (item && item.phone) {
+              const prev = updatedMap[item.phone];
+              updatedMap[item.phone] = {
+                id: item.id || (prev && prev.id) || Date.now(),
+                phone: item.phone,
+                full_name: item.full_name,
+                points: Number(item.points) || 1,
+                updated_at: item.updated_at || (prev && prev.updated_at) || new Date().toISOString(),
+                is_new: Boolean(prev && prev.is_new)
+              };
+            }
+          }
+          setSavedCustomersMap(updatedMap);
+        }
+        if (data.dailyStats && Array.isArray(data.dailyStats.historyByDate)) {
+          const mergedLogs = getSavedDailyLogs();
+          const logMap = new Map(mergedLogs.map((l) => [l.phone, l]));
+          for (const day of data.dailyStats.historyByDate) {
+            if (Array.isArray(day.customers)) {
+              for (const c of day.customers) {
+                if (c && c.phone) {
+                  logMap.set(c.phone, {
+                    date_key: c.date_key || day.date_key,
+                    phone: c.phone,
+                    full_name: c.full_name,
+                    points: Number(c.points) || 1,
+                    created_at: c.created_at || new Date().toISOString()
+                  });
+                }
+              }
+            }
+          }
+          setSavedDailyLogs(Array.from(logMap.values()));
+        }
         return data;
       }
     } catch (e) {
@@ -424,6 +464,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
       currentCustomer = data.customer;
       persistCustomerLocally(data.customer, false);
+      syncSavedRecordsToServer().catch(() => {});
       renderExistingCustomerCard(data.customer);
       showToast(data.message || 'Đã cập nhật điểm thành công!');
       if (data.dailyStats) {
@@ -517,6 +558,7 @@ document.addEventListener('DOMContentLoaded', () => {
       }
 
       persistCustomerLocally(data.customer, true);
+      syncSavedRecordsToServer().catch(() => {});
       showToast(data.message || 'Đã tạo mới & tích điểm!');
       renderExistingCustomerCard(data.customer);
       if (data.dailyStats) {
@@ -684,7 +726,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   async function loadDailyStats() {
     try {
-      const res = await fetch('/api/daily-stats');
+      const res = await fetch(`/api/daily-stats?_t=${Date.now()}`, { cache: 'no-store' });
       const json = await res.json();
       if (json.success && json.data) {
         applyDailyStatsData(json.data, json.total_customers ?? null);
@@ -855,7 +897,7 @@ document.addEventListener('DOMContentLoaded', () => {
   async function loadTotalCustomers() {
     if (!statTotalCustomers) return;
     try {
-      const res = await fetch('/api/stats');
+      const res = await fetch(`/api/stats?_t=${Date.now()}`, { cache: 'no-store' });
       const json = await res.json();
       if (json.success && json.data) {
         statTotalCustomers.textContent = getEffectiveTotalCustomers(json.data.total_customers);
@@ -872,7 +914,8 @@ document.addEventListener('DOMContentLoaded', () => {
     try {
       const search = customerListSearchInput ? customerListSearchInput.value.trim() : '';
       const res = await fetch(
-        `/api/customers?search=${encodeURIComponent(search)}&limit=1000`
+        `/api/customers?search=${encodeURIComponent(search)}&limit=1000&_t=${Date.now()}`,
+        { cache: 'no-store' }
       );
       const data = await res.json();
       if (!data.success) return;
@@ -995,13 +1038,41 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  (async () => {
-    const synced = await syncSavedRecordsToServer();
-    if (synced && synced.dailyStats) {
-      applyDailyStatsData(synced.dailyStats, synced.total_customers ?? null);
-    } else {
-      loadTotalCustomers();
-      loadDailyStats();
+  let isSyncingCrossDevice = false;
+  async function runCrossDeviceSync() {
+    if (isSyncingCrossDevice) return;
+    isSyncingCrossDevice = true;
+    try {
+      const synced = await syncSavedRecordsToServer();
+      if (synced && synced.dailyStats) {
+        applyDailyStatsData(synced.dailyStats, synced.total_customers ?? null);
+      } else {
+        await Promise.all([loadTotalCustomers(), loadDailyStats()]);
+      }
+      if (customerListPanel && customerListPanel.classList.contains('active')) {
+        loadCustomerList();
+      }
+    } finally {
+      isSyncingCrossDevice = false;
     }
-  })();
+  }
+
+  runCrossDeviceSync();
+
+  // Tự động đồng bộ định kỳ giữa các máy của nhân viên (mỗi 10 giây và khi mở lại tab/màn hình)
+  setInterval(() => {
+    if (document.visibilityState === 'visible') {
+      runCrossDeviceSync();
+    }
+  }, 10000);
+
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') {
+      runCrossDeviceSync();
+    }
+  });
+
+  window.addEventListener('focus', () => {
+    runCrossDeviceSync();
+  });
 });
